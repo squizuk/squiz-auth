@@ -98,6 +98,8 @@ def logout_jwt(provider):
     if provider not in app.config['JWT_PROVIDERS']:
         return abort(404)
 
+    session['sso_type'] = 'JWT'
+    session['sso_provider'] = provider
     session['authenticated'] = False
 
     flash('You have been logged out.')
