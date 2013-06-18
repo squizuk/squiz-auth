@@ -12,7 +12,7 @@ Instructions
 
 #### Install
 ```sh
-GIT_PATH=git@github.com:squizuk/squiz-auth.git
+GIT_PATH=https://github.com/squizuk/squiz-auth.git
 AUTH_PATH=/opt/squiz-auth/
 git clone $GIT_PATH $AUTH_PATH
 cd $AUTH_PATH
@@ -22,7 +22,9 @@ mv app/sample-config.yaml app/config.yaml && vim app/config.yaml
 ```
 
 #### Test
-```bin/uwsgi -H $PWD -s /tmp/squiz_auth.sock --file app/auth.py --callable app -M --need-app```
+```
+bin/uwsgi -H $PWD -s /tmp/squiz_auth.sock --file app/auth.py --callable app -M --need-app
+```
 
 #### Production
 6. Install supervisor
