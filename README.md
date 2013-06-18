@@ -49,7 +49,7 @@ The bundled software components are copyrighted by the respective copyright hold
 
 The core software is licensed under the 2-clause BSD license.
 
-Copyright (c) 2012, Ben Agricola <bagricola@squiz.co.uk>
+Copyright (c) 2013, Ben Agricola <bagricola@squiz.co.uk>
 
 All rights reserved.
 
