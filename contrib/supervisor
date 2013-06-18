@@ -1,0 +1,6 @@
+[program:squiz-auth]
+user=nginx
+group=nginx
+stopsignal=INT
+command=/path/to/squiz-auth/bin/uwsgi -H /path/to/squiz-auth -s /tmp/squiz_auth.sock --file app/auth.py --callable app --processes 4 -t 60 -M --need-app 
+directory=/path/to/squiz-auth

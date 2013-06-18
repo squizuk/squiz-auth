@@ -1,0 +1,18 @@
+application:
+  LDAP_SERVERS:
+    'ldaps://ldap_server_here':
+      bind_dn:  'cn=admin,ou=Apps,o=Org,c=uk,dc=org,dc=net'
+      password: 'password'
+      attrs:    ['uid','mail','telephoneNumber','displayName']
+      filter:   '(&(objectClass=inetOrgPerson)(ou=ou=Blah*)(uid={uid}))'
+      base_dn:  'dc=org,dc=net'
+      timeout:  2
+
+  JWT_PROVIDERS:
+    zendesk:
+      shared_key: 'blah'
+      callback:   'https://subdomain.zendesk.com/access/jwt?jwt={jwt_payload}'
+      ldap_map:
+        mail: 'email'
+        displayName: 'name'
+        uid: 'external_id'
