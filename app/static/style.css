@@ -4,43 +4,49 @@ body {
     color: #666;
 }
 
+.wrapper {
+    position: absolute;
+    width: 400px;
+    left: 50%;
+    top: 40%;
+    border: 2px solid #8974AD;
+    padding: 10px;
+    margin: -50px 0 0 -210px;
+    border-radius: 4x;
+    -webkit-border-radius: 4px;
+    -moz-border-radius: 4px;
+}
+
 form {
     display: block;
-    width: 300px;
     background: #8974AD;
-    position: absolute;
-    left: 50%;
-    bottom: 280px;
-    margin: -100px 0 0 -165px;
     padding: 30px;
-    box-shadow:         2px 2px 4px rgba(33,33,33,0.2);
+    box-shadow: 2px 2px 4px rgba(33,33,33,0.2);
     -webkit-box-shadow: 2px 2px 4px rgba(33,33,33,0.2);
-    -moz-box-shadow:    2px 2px 4px rgba(33,33,33,0.2);
-    border-radius:         4x;
+    -moz-box-shadow: 2px 2px 4px rgba(33,33,33,0.2);
+    border-radius: 4x;
     -webkit-border-radius: 4px;
-    -moz-border-radius:    4px;
+    -moz-border-radius: 4px;
 }
 
 div.flashes {
     display: block;
-    width: 270px;
     background: #E49391;
     position: absolute;
-    left: 50%;
-    bottom: 490px;
+    bottom: 100%;
     color: #993534;
     font-size: 0.8em;
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
-    margin: -100px 0 0 -152px;
     padding: 0px 28px 10px 30px;
     border: 0px solid #993534;
-    border-radius:         4px 4px 0 0;
+    border-radius: 4px 4px 0 0;
     -webkit-border-radius: 4px 4px 0 0;
-    -moz-border-radius:    4px 4px 0 0;
-    box-shadow:         1px 1px 3px rgba(33,33,33,0.3);
+    -moz-border-radius: 4px 4px 0 0;
+    box-shadow: 1px 1px 3px rgba(33,33,33,0.3);
     -webkit-box-shadow: 1px 1px 3px rgba(33,33,33,0.3);
-    -moz-box-shadow:    1px 1px 3px rgba(33,33,33,0.3);
-    
+    -moz-box-shadow: 1px 1px 3px rgba(33,33,33,0.3);
+    margin: 0px 10px -10px;
+    width: 320px;
 }
 
 div.flashes h4 {

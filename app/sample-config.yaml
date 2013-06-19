@@ -1,18 +1,33 @@
 application:
+  LOG_LEVEL: 10 #0-50 (0 = most verbose logging)
   LDAP_SERVERS:
-    'ldaps://ldap_server_here':
-      bind_dn:  'cn=admin,ou=Apps,o=Org,c=uk,dc=org,dc=net'
-      password: 'password'
-      attrs:    ['uid','mail','telephoneNumber','displayName']
-      filter:   '(&(objectClass=inetOrgPerson)(ou=ou=Blah*)(uid={uid}))'
+    'ldaps://ldap_server_1':
+      bind_dn:  'cn=admin,ou=Applications,o=Org,c=uk,dc=org,dc=net'
+      password: 'yourappbindpassword'
+      attrs:    ['uid','mail','cn']
+      filter:   '(&(objectClass=inetOrgPerson)(ou=ou=Staff*)(uid={username}))'
       base_dn:  'dc=org,dc=net'
       timeout:  2
+      sso_map:
+        jwt:
+          mail: 'email'
+          cn: 'name'
+          uid: 'external_id'
+
+    'ldaps://ldap_server_2':
+      bind_dn:  'cn=admin2,ou=Applications,o=Org,c=uk,dc=org,dc=net'
+      password: 'yourappbindpassword'
+      attrs:    ['mail','contactID','cn']
+      filter:   '(&(objectClass=inetOrgPerson)(mail={username}))'
+      base_dn:  'c=uk,dc=org,dc=net'
+      timeout:  2
+      sso_map:
+        jwt:
+          mail: 'email'
+          cn: 'name'
+          contactID: 'external_id'
 
   JWT_PROVIDERS:
-    zendesk:
-      shared_key: 'blah'
-      callback:   'https://subdomain.zendesk.com/access/jwt?jwt={jwt_payload}'
-      ldap_map:
-        mail: 'email'
-        displayName: 'name'
-        uid: 'external_id'
+    provider_name:
+      shared_key: 'your_very_long_shared_key'
+      callback:   'https://www.domain.com?jwt={jwt_payload}'

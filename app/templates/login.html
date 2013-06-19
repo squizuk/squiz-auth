@@ -10,20 +10,22 @@
         </script>
     </head>
     <body>
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="flashes">
-            <h4>Warning</h4>	
-        {% for message in messages %}
-            {{ message }}<br />
-        {% endfor %}
+        <div class="wrapper">
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="flashes">
+                <h4>Warning</h4>	
+            {% for message in messages %}
+                {{ message }}<br />
+            {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+            <form method="post">
+                <input type="text" id="username" name="username" placeholder="Username" />
+                <input type="password" id="password" name="password" placeholder="Password" />
+                <input type="submit" id="login" name="login" value="Login" />
+            </form>
         </div>
-      {% endif %}
-    {% endwith %}
-        <form method="post">
-            <input type="text" id="username" name="username" placeholder="Username" />
-            <input type="password" id="password" name="password" placeholder="Password" />
-            <input type="submit" id="login" name="login" value="Login" />
-        </form>
     </body>
 </html>

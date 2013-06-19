@@ -12,7 +12,7 @@ AppYAMLConfig(app,os.path.join(os.path.dirname(os.path.abspath(__file__)),'confi
 
 # Configure logging
 loglevel = app.config['LOG_LEVEL'] if 'LOG_LEVEL' in app.config else logging.WARNING
-logformat = logging.Formatter(app.config['LOGFORMAT'] if 'LOGFORMAT' in app.config else '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logformat = logging.Formatter(app.config['LOG_FORMAT'] if 'LOG_FORMAT' in app.config else '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 console_handler = logging.StreamHandler()
 console_handler.setLevel(loglevel)
 console_handler.setFormatter(logformat)
@@ -21,6 +21,7 @@ app.logger.setLevel(loglevel)
 app.logger.addHandler(console_handler)
 
 app.logger.info('LogLevel set to %d' % (loglevel,))
+app.debug = True
 
 app.secret_key = os.urandom(24)
 
@@ -67,7 +68,8 @@ def ldap_authenticate(username,password):
             return False
         
         ldap_attrs = ldap_config['attrs']
-        ldap_filter = ldap_config['filter'].format(uid=username)
+        ldap_sso_map = ldap_config['sso_map']
+        ldap_filter = ldap_config['filter'].format(username=username)
         ldap_base_dn = ldap_config['base_dn']
 
         # Find user in queryable DNs
@@ -77,7 +79,7 @@ def ldap_authenticate(username,password):
         # Check if a user was found
         if len(user_details) < 1: 
             app.logger.warning("No User Found for username %s" % (username,))
-            return False
+            continue
 
         # Attempt to bind as the user
         user_dn = user_details[0][0]
@@ -87,46 +89,14 @@ def ldap_authenticate(username,password):
 
         if userconn:
             app.logger.debug("Successfully bound as %s (%s)" % (user_dn,user_details[0][1]))
-            return user_details[0][1]
+            # Normalize user data based on SSO type
+            return normalize_sso(user_details[0][1],ldap_sso_map)
         else:
             app.logger.debug("Unable to bind to %s as %s" % (ldap_server,user_dn))
 
     return False
 
 
-@app.route("/")
-def index():
-    return redirect(url_for('login'))
-
-
-@app.route("/jwt/<provider>/login",methods=['GET'])
-def login_jwt(provider):
-    if provider not in app.config['JWT_PROVIDERS']:
-        app.logger.warning("Provider %s not found at %s" % (provider,request.url))
-        return abort(404)
-
-    session['sso_type'] = 'JWT'
-    session['sso_provider'] = provider
-
-    return redirect(url_for('login'))
-
-
-@app.route("/jwt/<provider>/logout",methods=['GET'])
-def logout_jwt(provider):
-    if provider not in app.config['JWT_PROVIDERS']:
-        app.logger.warning("Provider %s not found at %s" % (provider,request.url))
-        return abort(404)
-
-    session['sso_type'] = 'JWT'
-    session['sso_provider'] = provider
-    session['authenticated'] = False
-
-    flash('You have been logged out.')
-
-    return redirect(url_for('login'))
-
-
-@app.route("/login",methods=['GET', 'POST'])
 def login():
     # Allow cookie-based login assuming the session is authenticated and expires later than now
     if session.get('authenticated',False) and session.get('expires',0) > time.time():
@@ -134,7 +104,18 @@ def login():
         return redirect_sso()
     
     if request.method == 'POST':
-        return do_login()
+        user = ldap_authenticate(request.form['username'],request.form['password'])
+        if user is not False:
+            app.logger.debug("USER: %s" % (user,))
+            session['authenticated'] = True
+            session['userdata'] = user 
+            session['expires'] = time.time() + (3600 * 24)
+            app.logger.debug("User logged in successfully: %s" % (session,))
+            return redirect_sso()
+        else:
+            app.logger.debug("User did not login successfully: %s" % (session,))
+            flash('Username or password incorrect - please try again.')
+            return redirect(request.url)
     else:
 
         # Check if this has passed through and has an SSO type stored, if not, error
@@ -144,33 +125,59 @@ def login():
 
         return render_template('login.html')
 
+def normalize_sso(userdata,sso_types):
+    sso_type = session.get('sso_type','')
 
-def do_login():
-    user = ldap_authenticate(request.form['username'],request.form['password'])
-    if user is not False:
-        session['authenticated'] = True
-        session['userdata'] = user 
-        session['expires'] = time.time() + (3600 * 24)
-        app.logger.debug("User logged in successfully: %s" % (session,))
-        return redirect_sso()
-    else:
-        app.logger.debug("User did not login successfully: %s" % (session,))
-        flash('Username or password incorrect - please try again.')
-        return redirect(url_for('login'))
+    if sso_type.lower() not in sso_types:
+        app.logger.error("SSO Type %s does not have an attribute map (sso_map) for one of your ldap servers." % (sso_type,))
+        return {}
 
+    mapdata = {}
+    # Map user details to relevant SSO fields
+    for ldap_attr,sso_attr in sso_types[sso_type.lower()].items():
+        if ldap_attr not in userdata:
+            app.logger.error("Tried to set an SSO attribute %s mapping to %s" % (ldap_attr,sso_attr))
+            continue
+        mapdata[sso_attr] = userdata[ldap_attr][0]
+
+    return mapdata
 
 def redirect_sso():
-
-    sso_types = {
-        'JWT': 'return_jwt',
-        False: 'return_jwt',
-    }
-
     sso_type = session.get('sso_type',False)
-    return_sso_method = sso_types[sso_type]
 
-    app.logger.debug("Redirecting user for SSO Type %s, resolving to method %s" % (sso_type,return_sso_method))
-    return redirect(url_for(return_sso_method))
+    if not sso_type:
+        app.logger.error("SSO Type could not be retrieved from session: %s" % (session,))
+        abort(404)
+
+    app.logger.debug("Redirecting user for SSO Type %s" % (sso_type,))
+    return redirect(url_for('return_%s' % (sso_type.lower(),)))
+
+
+@app.route("/jwt/<provider>/login",methods=['GET','POST'])
+def login_jwt(provider):
+    if provider not in app.config['JWT_PROVIDERS']:
+        app.logger.warning("Provider %s not found at %s" % (provider,request.url))
+        return abort(404)
+
+    session['sso_type'] = 'jwt'
+    session['sso_provider'] = provider
+    return login()
+
+
+@app.route("/jwt/<provider>/logout",methods=['GET'])
+def logout_jwt(provider):
+    if provider not in app.config['JWT_PROVIDERS']:
+        app.logger.warning("Provider %s not found at %s" % (provider,request.url))
+        return abort(404)
+
+    session['sso_type'] = 'jwt'
+    session['sso_provider'] = provider
+    session['authenticated'] = False
+
+    logout_message = request.args.get('message') or 'You have been logged out'
+    flash(logout_message)
+
+    return redirect(url_for('login_jwt',provider=provider))
 
 
 @app.route("/return_jwt",methods=['GET'])
@@ -187,12 +194,7 @@ def return_jwt():
         "jti": str(uuid.uuid4()),
     }
 
-    # Populate JWT payload
-    for ldap_attr,jwt_attr in provider_config['ldap_map'].items():
-        if ldap_attr not in session['userdata']:
-            app.logger.error("Tried to set a JWT attribute %s that doesnt exist for this user: %s" % (jwt_attr,ldap_attr))
-            continue
-        payload[jwt_attr] = session['userdata'][ldap_attr][0] 
+    payload.update(session.get('userdata',{}))
 
     # Generate JWT URL
     jwt_string = jwt.encode(payload, provider_config['shared_key'])
@@ -207,6 +209,6 @@ def page_not_found(error):
     return 'This page does not exist', 404
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0',port=3000)
+    app.run(host='0.0.0.0',port=3000,debug=True)
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4
