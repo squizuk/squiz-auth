@@ -1,13 +1,27 @@
+import os, ldap, uuid, time, jwt, logging
 from flask import Flask, session, flash, redirect, url_for, escape, abort, request, g
 from flask import render_template
 from flaskext.yamlconfig import AppYAMLConfig
 from flaskext.yamlconfig import install_yaml_config
-import os, ldap, uuid, time, jwt, logging
 
 app = Flask(__name__)
+
+# Setup app configuration from yaml file
 install_yaml_config(app)
 AppYAMLConfig(app,os.path.join(os.path.dirname(os.path.abspath(__file__)),'config.yaml'))
-#app.debug = True
+
+# Configure logging
+loglevel = app.config['LOG_LEVEL'] if 'LOG_LEVEL' in app.config else logging.WARNING
+logformat = logging.Formatter(app.config['LOGFORMAT'] if 'LOGFORMAT' in app.config else '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler = logging.StreamHandler()
+console_handler.setLevel(loglevel)
+console_handler.setFormatter(logformat)
+
+app.logger.setLevel(loglevel)
+app.logger.addHandler(console_handler)
+
+app.logger.info('LogLevel set to %d' % (loglevel,))
+
 app.secret_key = os.urandom(24)
 
 ldap_connections = {}
@@ -17,24 +31,25 @@ def ldap_conn(server,bind_dn,password,timeout):
     conn.timeout = timeout 
 
     try:
-        print "Trying to bind as %s" % (bind_dn)
+        app.logger.debug("Trying to bind as %s" % (bind_dn,))
         conn.simple_bind_s(bind_dn,password)
-        print "Successfully bound to %s" % (server)
+        app.logger.debug("Successfully bound to %s" % (server,))
         return conn
     except (ldap.INVALID_CREDENTIALS, ldap.UNWILLING_TO_PERFORM, ldap.INVALID_DN_SYNTAX), e:
-        print "Invalid Credentials %s" % (e)
+        app.logger.warning("Invalid Credentials trying to bind to %s as %s (%s)" % (server,bind_dn,e))
         return False
     except Exception, e:
-        print "Unknown %s" % (e)
+        app.logger.error("Unknown error attempting to bind to %s as %s (%s)" % (server,bind_dn,e))
         flash('Unknown error occurred attempting to query auth server')
         return False
     return False
 
 def return_persistent_connection(ldap_server):
     if ldap_server in ldap_connections:
+        app.logger.debug("Returning already-open ldap connection %s" % (ldap_server,))
         return ldap_connections[ldap_server]
     else:
-        print "Returning new ldap connection %s" % (ldap_server)
+        app.logger.debug("Returning new ldap connection %s" % (ldap_server,))
         ldap_config = app.config['LDAP_SERVERS'][ldap_server]
         ldap_connection = ldap_conn(ldap_server,ldap_config['bind_dn'],ldap_config['password'],ldap_config['timeout'])
         ldap_connections[ldap_server] = ldap_connection
@@ -44,10 +59,11 @@ def return_persistent_connection(ldap_server):
 def ldap_authenticate(username,password):
     # Attempt to authenticate against a list of LDAP servers
     for ldap_server,ldap_config in app.config['LDAP_SERVERS'].items():
-
+        app.logger.debug("Attempting to authenticate user %s with server %s" %(username,ldap_server))
         master_conn = return_persistent_connection(ldap_server)
 
         if not master_conn:
+            app.logger.error("Master connection for ldap server %s is invalid" % (ldap_server,))
             return False
         
         ldap_attrs = ldap_config['attrs']
@@ -60,19 +76,20 @@ def ldap_authenticate(username,password):
 
         # Check if a user was found
         if len(user_details) < 1: 
-            print "No User Found"
+            app.logger.warning("No User Found for username %s" % (username,))
             return False
 
         # Attempt to bind as the user
         user_dn = user_details[0][0]
-        print "Server: %s DN: %s Timeout: %s" %(ldap_server,user_dn,ldap_config['timeout'])
+        app.logger.debug("Server: %s DN: %s Timeout: %s" %(ldap_server,user_dn,ldap_config['timeout']))
 
         userconn = ldap_conn(ldap_server,user_dn,password,ldap_config['timeout'])
 
         if userconn:
+            app.logger.debug("Successfully bound as %s (%s)" % (user_dn,user_details[0][1]))
             return user_details[0][1]
         else:
-            print "Unable to auth to %s" % (ldap_server)
+            app.logger.debug("Unable to bind to %s as %s" % (ldap_server,user_dn))
 
     return False
 
@@ -85,6 +102,7 @@ def index():
 @app.route("/jwt/<provider>/login",methods=['GET'])
 def login_jwt(provider):
     if provider not in app.config['JWT_PROVIDERS']:
+        app.logger.warning("Provider %s not found at %s" % (provider,request.url))
         return abort(404)
 
     session['sso_type'] = 'JWT'
@@ -96,6 +114,7 @@ def login_jwt(provider):
 @app.route("/jwt/<provider>/logout",methods=['GET'])
 def logout_jwt(provider):
     if provider not in app.config['JWT_PROVIDERS']:
+        app.logger.warning("Provider %s not found at %s" % (provider,request.url))
         return abort(404)
 
     session['sso_type'] = 'JWT'
@@ -111,6 +130,7 @@ def logout_jwt(provider):
 def login():
     # Allow cookie-based login assuming the session is authenticated and expires later than now
     if session.get('authenticated',False) and session.get('expires',0) > time.time():
+        app.logger.debug("User authenticated by existing cookie: %s" % (session.get('userdata',{}),))
         return redirect_sso()
     
     if request.method == 'POST':
@@ -119,6 +139,7 @@ def login():
 
         # Check if this has passed through and has an SSO type stored, if not, error
         if not session.get('sso_type',False):
+            app.logger.warning("Login session misplaced (no sso_type stored): %s" % (session,))
             flash('Your login session has been misplaced - please try to authenticate again.')    
 
         return render_template('login.html')
@@ -130,8 +151,10 @@ def do_login():
         session['authenticated'] = True
         session['userdata'] = user 
         session['expires'] = time.time() + (3600 * 24)
+        app.logger.debug("User logged in successfully: %s" % (session,))
         return redirect_sso()
     else:
+        app.logger.debug("User did not login successfully: %s" % (session,))
         flash('Username or password incorrect - please try again.')
         return redirect(url_for('login'))
 
@@ -143,13 +166,18 @@ def redirect_sso():
         False: 'return_jwt',
     }
 
-    return redirect(url_for(sso_types[session.get('sso_type',False)]))
+    sso_type = session.get('sso_type',False)
+    return_sso_method = sso_types[sso_type]
+
+    app.logger.debug("Redirecting user for SSO Type %s, resolving to method %s" % (sso_type,return_sso_method))
+    return redirect(url_for(return_sso_method))
 
 
 @app.route("/return_jwt",methods=['GET'])
 def return_jwt():
     sso_provider = session.get('sso_provider',False)
     if sso_provider not in app.config['JWT_PROVIDERS']:
+        app.logger.error("SSO Provider %s not in valid JWT provider list" % (sso_provider,))
         abort(500)
 
     provider_config = app.config['JWT_PROVIDERS'][sso_provider]
@@ -161,12 +189,17 @@ def return_jwt():
 
     # Populate JWT payload
     for ldap_attr,jwt_attr in provider_config['ldap_map'].items():
+        if ldap_attr not in session['userdata']:
+            app.logger.error("Tried to set a JWT attribute %s that doesnt exist for this user: %s" % (jwt_attr,ldap_attr))
+            continue
         payload[jwt_attr] = session['userdata'][ldap_attr][0] 
 
     # Generate JWT URL
     jwt_string = jwt.encode(payload, provider_config['shared_key'])
     sso_url = provider_config['callback'].format(jwt_payload=jwt_string)
 
+    app.logger.debug("JWT Data: %s" % (payload,))
+    app.logger.debug("JWT Url: %s" % (sso_url,)) 
     return redirect(sso_url)
 
 @app.errorhandler(404)
