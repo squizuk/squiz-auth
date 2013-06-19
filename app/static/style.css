@@ -27,6 +27,7 @@ form {
     border-radius: 4x;
     -webkit-border-radius: 4px;
     -moz-border-radius: 4px;
+    height: 145px;
 }
 
 div.flashes {
@@ -57,20 +58,22 @@ div.flashes h4 {
 }
 
 input[type="text"], input[type="password"] {
-  border:1px solid #ebebeb;
-  padding: 10px;
-  width: 280px;
-  margin-bottom:20px;
-  color:#555;
+    border: 1px solid #ebebeb;
+    padding: 10px;
+    width: 320px;
+    margin-bottom: 20px;
+    color: #555;
 }
+
 input[type="submit"] {
-  border:0px solid #ebebeb;
-  background:#ebebeb;
-  color:#555;
-  padding:10px 40px;
-  cursor:pointer;
-  float:right;
+    border:0px solid #ebebeb;
+    background:#ebebeb;
+    color:#555;
+    padding:10px 40px;
+    cursor:pointer;
+    float:right;
 }
+
 input[type="submit"]:hover {
-  background:#fafafa
+    background:#fafafa
 }
