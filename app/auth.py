@@ -1,8 +1,7 @@
 import os, ldap, uuid, time, jwt, logging
 from flask import Flask, session, flash, redirect, url_for, escape, abort, request, g
 from flask import render_template
-from flaskext.yamlconfig import AppYAMLConfig
-from flaskext.yamlconfig import install_yaml_config
+from flaskext.yamlconfig import AppYAMLConfig, install_yaml_config
 
 app = Flask(__name__)
 
@@ -16,16 +15,13 @@ logformat = logging.Formatter(app.config['LOG_FORMAT'] if 'LOG_FORMAT' in app.co
 console_handler = logging.StreamHandler()
 console_handler.setLevel(loglevel)
 console_handler.setFormatter(logformat)
-
 app.logger.setLevel(loglevel)
 app.logger.addHandler(console_handler)
-
-app.logger.info('LogLevel set to %d' % (loglevel,))
-app.debug = True
 
 app.secret_key = os.urandom(24)
 
 ldap_connections = {}
+
 
 def ldap_conn(server,bind_dn,password,timeout):
     conn = ldap.initialize(server)
@@ -44,6 +40,7 @@ def ldap_conn(server,bind_dn,password,timeout):
         flash('Unknown error occurred attempting to query auth server')
         return False
     return False
+
 
 def return_persistent_connection(ldap_server):
     if ldap_server in ldap_connections:
@@ -125,6 +122,7 @@ def login():
 
         return render_template('login.html')
 
+
 def normalize_sso(userdata,sso_types):
     sso_type = session.get('sso_type','')
 
@@ -141,6 +139,7 @@ def normalize_sso(userdata,sso_types):
         mapdata[sso_attr] = userdata[ldap_attr][0]
 
     return mapdata
+
 
 def redirect_sso():
     sso_type = session.get('sso_type',False)
@@ -203,6 +202,7 @@ def return_jwt():
     app.logger.debug("JWT Data: %s" % (payload,))
     app.logger.debug("JWT Url: %s" % (sso_url,)) 
     return redirect(sso_url)
+
 
 @app.errorhandler(404)
 def page_not_found(error):
