@@ -8,6 +8,13 @@ application:
       filter:   '(&(objectClass=inetOrgPerson)(ou=ou=Staff*)(uid={username}))'
       base_dn:  'dc=org,dc=net'
       timeout:  2
+      # If user_sanitize is defined, it will filter the inputted username
+      # using 'regex' and replace it with 'replace'. This uses pythons
+      # re.sub method, so documentation for this is available on the python
+      # docu site.
+      user_sanitize:
+        regex:    '@(email_domain\.(com\.au|co\.uk|net|pl|co\.nz))$'
+        replace:  ''
       sso_map:
         jwt:
           mail: 'email'

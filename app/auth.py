@@ -1,4 +1,4 @@
-import os, ldap, uuid, time, jwt, logging
+import os, ldap, uuid, time, jwt, logging, re
 from flask import Flask, session, flash, redirect, url_for, escape, abort, request, g
 from flask import render_template
 from flaskext.yamlconfig import AppYAMLConfig, install_yaml_config
@@ -66,6 +66,12 @@ def ldap_authenticate(username,password):
         
         ldap_attrs = ldap_config['attrs']
         ldap_sso_map = ldap_config['sso_map']
+        if 'user_sanitize' in ldap_config:
+            sanitize_regex = ldap_config['user_sanitize']['regex'] if 'regex' in ldap_config['user_sanitize'] else ''
+            sanitize_replace = ldap_config['user_sanitize']['replace'] if 'replace' in ldap_config['user_sanitize'] else ''
+            username = re.sub(sanitize_regex,sanitize_replace,username)
+            app.logger.debug("Sanitized username is '%s'" % (username,))
+
         ldap_filter = ldap_config['filter'].format(username=username)
         ldap_base_dn = ldap_config['base_dn']
 
