@@ -15,8 +15,14 @@ logformat = logging.Formatter(app.config['LOG_FORMAT'] if 'LOG_FORMAT' in app.co
 console_handler = logging.StreamHandler()
 console_handler.setLevel(loglevel)
 console_handler.setFormatter(logformat)
+
+logfile_handler = logging.FileHandler(app.config['LOG_FILE'] if 'LOG_FILE' in app.config else '/dev/null')
+logfile_handler.setLevel(loglevel)
+logfile_handler.setFormatter(logformat)
+
 app.logger.setLevel(loglevel)
 app.logger.addHandler(console_handler)
+app.logger.addHandler(logfile_handler)
 
 app.secret_key = os.urandom(24)
 
