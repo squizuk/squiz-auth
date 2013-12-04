@@ -15,16 +15,22 @@ logformat = logging.Formatter(app.config['LOG_FORMAT'] if 'LOG_FORMAT' in app.co
 console_handler = logging.StreamHandler()
 console_handler.setLevel(loglevel)
 console_handler.setFormatter(logformat)
+
+logfile_handler = logging.FileHandler(app.config['LOG_FILE'] if 'LOG_FILE' in app.config else '/dev/null')
+logfile_handler.setLevel(loglevel)
+logfile_handler.setFormatter(logformat)
+
 app.logger.setLevel(loglevel)
 app.logger.addHandler(console_handler)
+app.logger.addHandler(logfile_handler)
 
 app.secret_key = os.urandom(24)
 
 ldap_connections = {}
 
 
-def ldap_conn(server,bind_dn,password,timeout):
-    conn = ldap.initialize(server)
+def ldap_conn(server,bind_dn,password,timeout,retry_max,retry_delay):
+    conn = ldap.ldapobject.ReconnectLDAPObject(server,retry_max=retry_max,retry_delay=retry_delay)
     conn.timeout = timeout 
 
     try:
@@ -49,7 +55,7 @@ def return_persistent_connection(ldap_server):
     else:
         app.logger.debug("Returning new ldap connection %s" % (ldap_server,))
         ldap_config = app.config['LDAP_SERVERS'][ldap_server]
-        ldap_connection = ldap_conn(ldap_server,ldap_config['bind_dn'],ldap_config['password'],ldap_config['timeout'])
+        ldap_connection = ldap_conn(ldap_server,ldap_config['bind_dn'],ldap_config['password'],ldap_config['timeout'],ldap_config['retry_max'],ldap_config['retry_delay'])
         ldap_connections[ldap_server] = ldap_connection
         return ldap_connection
 
@@ -77,7 +83,7 @@ def ldap_authenticate(username,password):
 
         # Find user in queryable DNs
     
-        user_details = master_conn.search_s(ldap_base_dn,ldap.SCOPE_SUBTREE,ldap_filter,attrlist=ldap_attrs)
+        user_details = master_conn.search_ext_s(ldap_base_dn,ldap.SCOPE_SUBTREE,ldap_filter,attrlist=ldap_attrs)
 
         # Check if a user was found
         if len(user_details) < 1: 
@@ -88,7 +94,7 @@ def ldap_authenticate(username,password):
         user_dn = user_details[0][0]
         app.logger.debug("Server: %s DN: %s Timeout: %s" %(ldap_server,user_dn,ldap_config['timeout']))
 
-        userconn = ldap_conn(ldap_server,user_dn,password,ldap_config['timeout'])
+        userconn = ldap_conn(ldap_server,user_dn,password,ldap_config['timeout'],ldap_config['retry_max'],ldap_config['retry_delay'])
 
         if userconn:
             app.logger.debug("Successfully bound as %s (%s)" % (user_dn,user_details[0][1]))
@@ -107,18 +113,25 @@ def login():
         return redirect_sso()
     
     if request.method == 'POST':
-        user = ldap_authenticate(request.form['username'],request.form['password'])
-        if user is not False:
-            app.logger.debug("USER: %s" % (user,))
-            session['authenticated'] = True
-            session['userdata'] = user 
-            session['expires'] = time.time() + (3600 * 24)
-            app.logger.debug("User logged in successfully: %s" % (session,))
-            return redirect_sso()
-        else:
-            app.logger.debug("User did not login successfully: %s" % (session,))
-            flash('Username or password incorrect - please try again.')
+        try:
+            user = ldap_authenticate(request.form['username'],request.form['password'])
+            if user is not False:
+                app.logger.debug("USER: %s" % (user,))
+                session['authenticated'] = True
+                session['userdata'] = user 
+                session['expires'] = time.time() + (3600 * 24)
+                app.logger.debug("User logged in successfully: %s" % (session,))
+                return redirect_sso()
+            else:
+                app.logger.debug("User did not login successfully: %s" % (session,))
+                flash('Username or password incorrect - please try again.')
+                return redirect(request.url)
+        except Exception, e:
+            app.logger.error("Uncaught error attempting to auth with LDAP: %s" % (e,))
+            flash('Unable to auth - unknown error occurred. Please contact support@squiz.co.uk')
             return redirect(request.url)
+
+        
     else:
 
         # Check if this has passed through and has an SSO type stored, if not, error

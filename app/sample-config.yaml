@@ -1,5 +1,6 @@
 application:
-  LOG_LEVEL: 10 #0-50 (0 = most verbose logging)
+  LOG_LEVEL: 10 #10-50 (10 = most verbose logging)
+  LOG_FILE: '/var/log/squiz-auth/squiz-auth.log'
   LDAP_SERVERS:
     'ldaps://ldap_server_1':
       bind_dn:  'cn=admin,ou=Applications,o=Org,c=uk,dc=org,dc=net'
