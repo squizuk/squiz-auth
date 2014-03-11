@@ -9,6 +9,8 @@ application:
       filter:   '(&(objectClass=inetOrgPerson)(ou=ou=Staff*)(uid={username}))'
       base_dn:  'dc=org,dc=net'
       timeout:  2
+      role: 'agent'
+      custom_role_id: 11111
       # If user_sanitize is defined, it will filter the inputted username
       # using 'regex' and replace it with 'replace'. This uses pythons
       # re.sub method, so documentation for this is available on the python
@@ -29,6 +31,7 @@ application:
       filter:   '(&(objectClass=inetOrgPerson)(mail={username}))'
       base_dn:  'c=uk,dc=org,dc=net'
       timeout:  2
+      role: 'user'
       sso_map:
         jwt:
           mail: 'email'

@@ -1,7 +1,11 @@
-import os, ldap, uuid, time, jwt, logging, re
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import os, ldap, uuid, time, jwt, logging, re, traceback
 from flask import Flask, session, flash, redirect, url_for, escape, abort, request, g
 from flask import render_template
 from flaskext.yamlconfig import AppYAMLConfig, install_yaml_config
+from pprint import pprint as pprint
 
 app = Flask(__name__)
 
@@ -11,7 +15,7 @@ AppYAMLConfig(app,os.path.join(os.path.dirname(os.path.abspath(__file__)),'confi
 
 # Configure logging
 loglevel = app.config['LOG_LEVEL'] if 'LOG_LEVEL' in app.config else logging.WARNING
-logformat = logging.Formatter(app.config['LOG_FORMAT'] if 'LOG_FORMAT' in app.config else '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logformat = logging.Formatter(app.config['LOG_FORMAT'] if 'LOG_FORMAT' in app.config else '%(asctime)s - [%(pathname)s:%(lineno)d] %(name)s - %(levelname)s - %(message)s')
 console_handler = logging.StreamHandler()
 console_handler.setLevel(loglevel)
 console_handler.setFormatter(logformat)
@@ -48,8 +52,8 @@ def ldap_conn(server,bind_dn,password,timeout,retry_max,retry_delay):
     return False
 
 
-def return_persistent_connection(ldap_server):
-    if ldap_server in ldap_connections:
+def return_persistent_connection(ldap_server,force=False):
+    if ldap_server in ldap_connections and not force:
         app.logger.debug("Returning already-open ldap connection %s" % (ldap_server,))
         return ldap_connections[ldap_server]
     else:
@@ -66,20 +70,26 @@ def ldap_authenticate(username,password):
         app.logger.debug("Attempting to authenticate user %s with server %s" %(username,ldap_server))
         master_conn = return_persistent_connection(ldap_server)
 
-        if not master_conn:
-            app.logger.error("Master connection for ldap server %s is invalid" % (ldap_server,))
-            return False
+        if not master_conn or not master_conn._l:
+            app.logger.error("Master connection for ldap server %s is invalid, trying to reconnect..." % (ldap_server,))
         
-        ldap_attrs = ldap_config['attrs']
-        ldap_sso_map = ldap_config['sso_map']
+            master_conn = return_persistent_connection(ldap_server,True)
+
+            if not master_conn or not master_conn._l:
+                app.logger.error("Master connection for ldap server %s is STILL invalid. Aborting..." % (ldap_server,))
+                return False
+
+        ldap_attrs = ldap_config.get('attrs',{})
+        ldap_sso_map = ldap_config.get('sso_map',{})
+        ldap_sso_static = ldap_config.get('static_attributes',{})
         if 'user_sanitize' in ldap_config:
-            sanitize_regex = ldap_config['user_sanitize']['regex'] if 'regex' in ldap_config['user_sanitize'] else ''
-            sanitize_replace = ldap_config['user_sanitize']['replace'] if 'replace' in ldap_config['user_sanitize'] else ''
+            sanitize_regex = ldap_config.get('user_sanitize',{}).get('regex','')
+            sanitize_replace = ldap_config.get('user_sanitize',{}).get('replace','')
             username = re.sub(sanitize_regex,sanitize_replace,username)
             app.logger.debug("Sanitized username is '%s'" % (username,))
 
-        ldap_filter = ldap_config['filter'].format(username=username)
-        ldap_base_dn = ldap_config['base_dn']
+        ldap_filter = ldap_config.get('filter','').format(username=username)
+        ldap_base_dn = ldap_config.get('base_dn','')
 
         # Find user in queryable DNs
     
@@ -94,12 +104,12 @@ def ldap_authenticate(username,password):
         user_dn = user_details[0][0]
         app.logger.debug("Server: %s DN: %s Timeout: %s" %(ldap_server,user_dn,ldap_config['timeout']))
 
-        userconn = ldap_conn(ldap_server,user_dn,password,ldap_config['timeout'],ldap_config['retry_max'],ldap_config['retry_delay'])
+        userconn = ldap_conn(ldap_server,user_dn,password.encode('utf-8'),ldap_config['timeout'],ldap_config['retry_max'],ldap_config['retry_delay'])
 
         if userconn:
             app.logger.debug("Successfully bound as %s (%s)" % (user_dn,user_details[0][1]))
             # Normalize user data based on SSO type
-            return normalize_sso(user_details[0][1],ldap_sso_map)
+            return normalize_sso(user_details[0][1],ldap_sso_map,ldap_sso_static)
         else:
             app.logger.debug("Unable to bind to %s as %s" % (ldap_server,user_dn))
 
@@ -119,7 +129,7 @@ def login():
                 app.logger.debug("USER: %s" % (user,))
                 session['authenticated'] = True
                 session['userdata'] = user 
-                session['expires'] = time.time() + (3600 * 24)
+                session['expires'] = time.time() + (86400 * 7)
                 app.logger.debug("User logged in successfully: %s" % (session,))
                 return redirect_sso()
             else:
@@ -128,6 +138,7 @@ def login():
                 return redirect(request.url)
         except Exception, e:
             app.logger.error("Uncaught error attempting to auth with LDAP: %s" % (e,))
+            app.logger.error("Traceback: %s" % (traceback.format_exc(),))
             flash('Unable to auth - unknown error occurred. Please contact support@squiz.co.uk')
             return redirect(request.url)
 
@@ -142,8 +153,8 @@ def login():
         return render_template('login.html')
 
 
-def normalize_sso(userdata,sso_types):
-    sso_type = session.get('sso_type','')
+def normalize_sso(userdata,sso_types,static_attributes):
+    sso_type = session.get('sso_type','').lower()
 
     if sso_type.lower() not in sso_types:
         app.logger.error("SSO Type %s does not have an attribute map (sso_map) for one of your ldap servers." % (sso_type,))
@@ -151,11 +162,15 @@ def normalize_sso(userdata,sso_types):
 
     mapdata = {}
     # Map user details to relevant SSO fields
-    for ldap_attr,sso_attr in sso_types[sso_type.lower()].items():
+    for ldap_attr,sso_attr in sso_types.get(sso_type,{}).items():
         if ldap_attr not in userdata:
             app.logger.error("Tried to set an SSO attribute %s mapping to %s" % (ldap_attr,sso_attr))
             continue
         mapdata[sso_attr] = userdata[ldap_attr][0]
+
+    # Add static attributes for this SSO type
+    #for attr,value in static_attributes.get(sso_type,{}).items():
+    #    mapdata[attr] = value
 
     return mapdata
 
