@@ -182,8 +182,9 @@ def redirect_sso():
         app.logger.error("SSO Type could not be retrieved from session: %s" % (session,))
         abort(404)
 
-    app.logger.debug("Redirecting user for SSO Type %s" % (sso_type,))
-    return redirect(url_for('return_%s' % (sso_type.lower(),)))
+    url = url_for('return_%s' % (sso_type.lower(),),_scheme="https",_external=True)
+    app.logger.debug("Redirecting user for SSO Type %s to %s" % (sso_type,url))
+    return redirect(url)
 
 
 @app.route("/jwt/<provider>/login",methods=['GET','POST'])
@@ -210,7 +211,7 @@ def logout_jwt(provider):
     logout_message = request.args.get('message') or 'You have been logged out'
     flash(logout_message)
 
-    return redirect(url_for('login_jwt',provider=provider))
+    return redirect(url_for('login_jwt',provider=provider,_scheme="https",_external=True))
 
 
 @app.route("/return_jwt",methods=['GET'])
