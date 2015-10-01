@@ -59,7 +59,7 @@ def return_persistent_connection(ldap_server,force=False):
     else:
         app.logger.debug("Returning new ldap connection %s" % (ldap_server,))
         ldap_config = app.config['LDAP_SERVERS'][ldap_server]
-        ldap_connection = ldap_conn(ldap_server,ldap_config['bind_dn'],ldap_config['password'],ldap_config['timeout'],ldap_config['retry_max'],ldap_config['retry_delay'])
+        ldap_connection = ldap_conn(ldap_config.get('server',ldap_server),ldap_config['bind_dn'],ldap_config['password'],ldap_config['timeout'],ldap_config['retry_max'],ldap_config['retry_delay'])
         ldap_connections[ldap_server] = ldap_connection
         return ldap_connection
 
@@ -104,7 +104,7 @@ def ldap_authenticate(username,password):
         user_dn = user_details[0][0]
         app.logger.debug("Server: %s DN: %s Timeout: %s" %(ldap_server,user_dn,ldap_config['timeout']))
 
-        userconn = ldap_conn(ldap_server,user_dn,password.encode('utf-8'),ldap_config['timeout'],ldap_config['retry_max'],ldap_config['retry_delay'])
+        userconn = ldap_conn(ldap_config.get('server',ldap_server),user_dn,password.encode('utf-8'),ldap_config['timeout'],ldap_config['retry_max'],ldap_config['retry_delay'])
 
         if userconn:
             app.logger.debug("Successfully bound as %s (%s)" % (user_dn,user_details[0][1]))
@@ -135,12 +135,12 @@ def login():
             else:
                 app.logger.debug("User did not login successfully: %s" % (session,))
                 flash('Username or password incorrect - please try again.')
-                return redirect(request.url)
+                return render_template('login.html')
         except Exception, e:
             app.logger.error("Uncaught error attempting to auth with LDAP: %s" % (e,))
             app.logger.error("Traceback: %s" % (traceback.format_exc(),))
             flash('Unable to auth - unknown error occurred. Please contact support@squiz.co.uk')
-            return redirect(request.url)
+            return render_template('login.html')
 
         
     else:
